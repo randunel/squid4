@@ -831,10 +831,19 @@ FwdState::connectStart()
 
     request->hier.startPeerClock();
 
+    const CachePeer *p = serverDestinations[0]->getPeer();
+    const bool peerIsOrigin = p && p->options.originserver;
+    const bool sslBumped = request->flags.sslBumped;
+
     // Do not fowrward bumped connections to parent proxy unless it is an
-    // origin server
-    if (serverDestinations[0]->getPeer() && !serverDestinations[0]->getPeer()->options.originserver && request->flags.sslBumped) {
-        debugs(50, 4, "fwdConnectStart: Ssl bumped connections through parent proxy are not allowed");
+    // origin server or it uses ssl
+#if USE_OPENSSL
+    const bool peerWantsTls = p && p->secure.encryptTransport;
+    if (p && sslBumped && !peerIsOrigin && !peerWantsTls) {
+#else
+    if (p && sslBumped && !peerIsOrigin) {
+#endif
+        debugs(50, 4, "fwdConnectStart: Ssl bumped connections through non-tls parent proxy are not allowed");
         ErrorState *anErr = new ErrorState(ERR_CANNOT_FORWARD, Http::scServiceUnavailable, request);
         fail(anErr);
         self = NULL; // refcounted
